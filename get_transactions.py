@@ -73,9 +73,74 @@ def authenticate(client_id, client_secret, redirect_uri="https://localhost:8080/
     if response.ok:
         return response.json()["access_token"]
     else:
-        raise ValueError(f"Encountered HTTP error {response.status_code} while \
-                         requesting access token. Check 'client_id' and \
-                         'client_secret' in credentials.json.")
+        raise ValueError(f"Encountered HTTP error {response.status_code} while" \
+                         "requesting access token. Check 'client_id' and" \
+                         "'client_secret' in credentials.json.")
+
+
+def get_all_transactions(access_token, verbose=False):
+    """Retrieves all transactions since the account was created. Saves results in
+    a JSON file transactions.json.
+
+    Multiple calls must be made because Monzo's API allows the maximum time
+    between the 'since' and 'before' parametrs to be 8760 hours (365 days) [1].
+    Additionall, the maximum number of transactions we can receive in a single 
+    API call is 100 [2]. It's quite likely that a user will have more than 100 
+    transactions per year though, so the time window will probably be the limiting
+    factor.
+    
+    References
+    [1] https://docs.monzo.com/#list-transactions
+    [2] https://docs.monzo.com/#pagination"""
+    
+    # Get account ID and creation date
+    header = {"Authorization": f"Bearer {access_token}"}
+    response = requests.get("https://api.monzo.com/accounts", headers=header)
+    if len(response.json()["accounts"]) > 2:
+        raise ValueError("Not yet implemented: two or more accounts associated" \
+                         "with this login.")
+    account_id = response.json()["accounts"][0]["id"]
+    created = response.json()["accounts"][0]["created"]
+
+    # Set start and end date of first time period
+    start = datetime.strptime(created, "%Y-%m-%dT%H:%M:%S.%fZ")
+    end = start + timedelta(hours=8760)  # max time interval allowed by Monzo's API
+
+    transactions = []
+    print("Attempting to fetch all previous transactions...")
+
+    block_size = 100    
+    while block_size >= 100:
+        # Get block of transactions and append to transactions list
+        params = {"account_id": account_id,
+                  "since": start.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                  "before": end.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                  "limit": block_size}
+        response = requests.get("https://api.monzo.com/transactions", 
+                            headers=header, params=params)
+        tlist = response.json()["transactions"]
+        block_size = len(tlist)
+        transactions.append(tlist)
+
+        first = tlist[0]["created"]
+        last = tlist[-1]["created"]
+        first = datetime.strptime(first, "%Y-%m-%dT%H:%M:%S.%fZ")
+        last = datetime.strptime(last, "%Y-%m-%dT%H:%M:%S.%fZ")
+
+        # Verbose output to show progress (roughly 1 call per second)
+        if verbose:
+            print(f"{first.strftime('%d %b %Y')} to {last.strftime('%d %b %Y')}:  " \
+                  f"{block_size} entries.")
+
+        # Set start of next block to the end of this block
+        start = last + timedelta(seconds=1)
+        end = start + timedelta(hours=8760)
+
+    with open("transactions.json", "w") as file:
+        json.dump({"transactions": transactions}, file, indent=2)
+
+    print("Saved transaction data to: transactions.json.")
+
 
 if __name__ == "__main__":
     with open("credentials.json", "r") as file:
@@ -84,66 +149,30 @@ if __name__ == "__main__":
     client_id = credentials.get("client_id", None)
     client_secret = credentials.get("client_secret", None)
     access_token = credentials.get("access_token", None)
+    time_stamp = credentials.get("time_stamp", None)
 
     # Validate inputs from credentials.json.
     if client_id is None:
         raise ValueError("'client_id' missing from credentials.json.")
     if client_secret is None:
         raise ValueError("'client_secret' is missing from credentials.json.")
+
+    # If access_token in credentials.json is more than 4 mins 50 seconds old,
+    # set access_token to None and reauthenticate (via email)
+    # FIXME I don't think this is needed if we sent the client to "Confidential"
+    if time_stamp is not None:
+        t = datetime.strptime(time_stamp, "%Y-%m-%dT%H:%M:%S.%fZ")
+        if (datetime.now() - t) > timedelta(minutes=4, seconds=50): 
+            access_token = None
     
     if access_token is None:
         access_token = authenticate(client_id, client_secret)
+        time_stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
         credentials["access_token"] = access_token
+        credentials["time_stamp"] = time_stamp
         with open("credentials.json", "w") as file:
             json.dump(credentials, file, indent=2)  # Save for future use
-    
-    whoami = requests.get("https://api.monzo.com/ping/whoami", 
-                        headers={"Authorization": f"Bearer {access_token}"})
-    print(f"WHOAMI response: \n  {whoami.json()}\n")
-
-    # If any of the below requests fail due to permissions errors, open the Monzo app.
-    # You just need to authenticate via the app.
-    # FIXME in code below, selecting account 'zero' is bad practice.
-    #  - Check whether user has multiple accounts
-    #    i.e. if len(accounts.json()["accounts"] > 2
-    #  - If true, ask them which account they'd like to select
-    #  - If false, don't bother them with this
-    accounts = requests.get("https://api.monzo.com/accounts", 
-                        headers={"Authorization": f"Bearer {access_token}"})
-    print(f"Accounts: \n  {accounts.json()}\n")
-    account_id = accounts.json()["accounts"][0]["id"]
-
-    balance = requests.get("https://api.monzo.com/balance", 
-                        headers={"Authorization": f"Bearer {access_token}"},
-                        params={"account_id": account_id})
-    print(f"Balance (in pence): \n  {balance.json()}\n")
-
-    # ===================
-    # Fetch transactions
-    # ===================
-    #
-    # This is complicated for a couple of reasons. For details, see Refs. [1, 2].
-    #  1) The maximum time between 'since' and 'before' in the list transactions
-    #     API call [1] is 8760 hours (365 days), and the maximum number of transactions
-    #     we can receive in a single call is 100 [2]. It's quite likely that a user will
-    #     have more than 100 transactions per year though, so the time limit is likely 
-    #     the more important one.
-    #   2) After authenticating, we've only got 5 minutes to fetch transaction data.
-    #      We should account for this in some way. For example, when we save the
-    #      access_token in credentials.json, we could also save a timestamp. When
-    #      re-using this access_token, we can check whether it's been more than 5 mins. 
-    # References
-    # [1] https://docs.monzo.com/#list-transactions
-    # [2] https://docs.monzo.com/#pagination
-    created = accounts.json()["accounts"][0]["created"]
-    start = datetime.strptime(created, "%Y-%m-%dT%H:%M:%S.%fZ")
-    start.replace(hour=0, minute=0, second=0, microsecond=0) # set to midnight
-    end = start + timedelta(hours=8760)  # max time interval allowed by Monzo's API
-
-    transactions = requests.get("https://api.monzo.com/transactions", 
-                        headers={"Authorization": f"Bearer {access_token}"},
-                        params={"account_id": account_id,
-                                "since": start.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-                                "before": end.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-                                "limit": 100})
-    print(f"First batch of transactions on account: \n  {transactions.json()}\n")
+            
+    app_auth = input("Have you authenticated in the Monzo app? [y/n] ").lower()
+    if app_auth == "y":
+        get_all_transactions(access_token, verbose=True)
