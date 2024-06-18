@@ -1,5 +1,9 @@
 # Monzo personal finance dashboard
-Currently a work in progress!
+Currently a work in progress! 
+- **5th June 2024:** Brain storming session. Decided on this project.
+- **13th June 2024:** Started playing around with the Monzo API and HTTP requests using Python.
+- **18th June 2024:** Got basic Monzo API calls working from within Python (including retrieving transactions!)
+- **19th June 2024:** Reviewing changes together and ensuring we've on the same page.
 
 ## Getting started
 ### Requirements
@@ -49,11 +53,12 @@ You can run the app with
 python3 test.py
 ```
 
-When the app runs successfully, a browser window will open and ask for the email address associated with your Monzo account. Enter your email address. You'll then receive an email with a 'magic link' that you use to authenticate the app. Click on this link. It will redirect to a webpage that says something like "This site can’t be reached". This makes sense - we haven't created the webpage yet! (we'll do this later) The URL is still helpful though. Copy & paste the redirect URL into your terminal. You should then see your access token and 'who am I' response printed to the screen.
+When the app runs successfully, a browser window will open and ask for the email address associated with your Monzo account. Enter your email address. You'll then receive an email with a 'magic link' that you use to authenticate the app. Click on this link. It will redirect to a webpage that says something like "This site can’t be reached". This makes sense - we haven't created the webpage yet! (we'll do this later) The URL is still helpful though. Copy & paste the redirect URL into your terminal. You should then see the outputs of various API calls in your terminal (WHOAMI, accounts, current balance, and first few transactions).
 
 ## To-do list for Jack
 - Try to run the code
 - Ensure you understand every line and each step in the installation process
-- Attempt to get some transaction data using Monzo's API
+- ~~Attempt to get some transaction data using Monzo's API~~
 - Attempt to save transaction data to file (e.g. using an SQL database)
 - Create a more helpful redirect page (you may wish to use Flask here)
+- In the setup stage on [https://developers.monzo.com/](https://developers.monzo.com/), it may be worth us using a "confidential" client instead. This way, we'll be able to refresh our access tokens rather than re-authenticating. For details, see the [Refreshing access](https://docs.monzo.com/#refreshing-access) section of Monzo's API docs.
