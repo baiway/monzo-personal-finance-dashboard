@@ -159,7 +159,6 @@ if __name__ == "__main__":
 
     # If access_token in credentials.json is more than 4 mins 50 seconds old,
     # set access_token to None and reauthenticate (via email)
-    # FIXME I don't think this is needed if we sent the client to "Confidential"
     if time_stamp is not None:
         t = datetime.strptime(time_stamp, "%Y-%m-%dT%H:%M:%S.%fZ")
         if (datetime.now() - t) > timedelta(minutes=4, seconds=50): 
