@@ -37,6 +37,7 @@ If you're not familiar with Python virtual environments, watch [this video](http
 ```
 
 **4. Activate the virtual environment.**
+
 On macOS or Linux, enter
 ```
   source .venv/bin/activate
@@ -46,7 +47,7 @@ If using PowerShell on Windows, enter
   .venv\Scripts\Activate.ps1
 ```
 
-5. Install dependencies
+**5. Install dependencies**
 ```
   pip install -r requirements.txt
 ```
