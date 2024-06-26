@@ -16,7 +16,7 @@ Before using the app, you'll need to set up a client ID using Monzo's Developer 
 1. Go to [https://developers.monzo.com/](https://developers.monzo.com/) and sign in.
 2. Click on 'Clients' on the top-right of the page. 
 3. Click the 'New OAuth Client' button. 
-4. Give your client a sensible name and description (can be whatever you like) and set the redirect URL to `https://localhost:8080/`. Leave the logo URL blank (this can be changed later). Set the confidentiality to `Not Confidential`.
+4. Give your client a sensible name and description (can be whatever you like) and set the redirect URL to `http://localhost:8080/callback`. Leave the logo URL blank (this can be changed later). Set the confidentiality to `Not Confidential`.
 
 Keep this web page open. We'll need the **Client ID** and **Client Secret** shortly.
 
