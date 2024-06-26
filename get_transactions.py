@@ -3,8 +3,13 @@ import requests
 import webbrowser
 import random
 import string
-import re
 from datetime import datetime, timedelta
+from flask import Flask, request, redirect
+import threading
+
+app = Flask(__name__)
+auth_code = None
+shutdown_event = threading.Event()
 
 # TODO Consider placing this function in a `src/utils.py` file to avoid clutter.
 def gen_rand_str(length=16):
@@ -15,7 +20,29 @@ def gen_rand_str(length=16):
     return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
-def authenticate(client_id, client_secret, redirect_uri="https://localhost:8080/"):
+def run_flask():
+    app.run(port=8080)
+
+
+@app.route("/")
+def index():
+    return "Authentication successful. You can close this window."
+
+
+@app.route("/callback")
+def callback():
+    global auth_code
+    auth_code = request.args.get("code")
+    return redirect("/")
+
+
+# @app.route("/shutdown", methods=["POST"])
+# def shutdown():
+#     shutdown_event.set()
+#     return "Shutting down Flask server..."
+
+
+def authenticate(client_id, client_secret):
     """Authenticate with the Monzo API and acquire an access token.
 
     This function performs the OAuth2 authorization flow:
@@ -31,8 +58,12 @@ def authenticate(client_id, client_secret, redirect_uri="https://localhost:8080/
 
     Returns:
         str: Access token for authenticating with the Monzo API."""
+    global auth_code
+    auth_code = None
+    
     base_auth_url = "https://auth.monzo.com/"
     token_url = "https://api.monzo.com/oauth2/token"
+    redirect_uri="http://localhost:8080/callback"
 
     # Authorisation URL structure given in Monzo API docs
     # See: https://docs.monzo.com/#acquire-an-access-token
@@ -48,30 +79,30 @@ def authenticate(client_id, client_secret, redirect_uri="https://localhost:8080/
     # Perhaps provide a hint in our UI later down the line? (e.g. if this step does not
     # progress in 30 seconds, display a hint?)
     webbrowser.open(auth_url)
-    
-    # Wait for the user to authorize and paste the redirect URL here
-    redirect_response = input("Paste the full redirect URL here: ") # TODO nicer method?
+    print("Waiting for user to authenticate...")
 
-    # Extract the authorisation code from the redirect_response
-    match = re.search(r"[?&]code=([^&]*)", redirect_response)
-    if match is None:
-        raise ValueError("No authorisation code found in redirect response.")
-    authorisation_code = match.group(1)
+    # Start a Flask server on a separate thread
+    threading.Thread(target=run_flask, daemon=True).start()
+
+    while auth_code is None:
+        pass
 
     # Exchange the authorisation code for an access token
     response = requests.post(
         token_url,
         data={
-            "grant_type": 'authorization_code', # needs to spelled with a z...
+            "grant_type": 'authorization_code', # must be spelled with a z...
             "client_id": client_id,
             "client_secret": client_secret,
             "redirect_uri": redirect_uri,
-            "code": authorisation_code,
+            "code": auth_code,
         }
     )
 
     if response.ok:
-        return response.json()["access_token"]
+        access_token = response.json()["access_token"]
+        # requests.post("http://localhost:8080/shutdown") # shutdown the Flask server
+        return access_token
     else:
         raise ValueError(f"Encountered HTTP error {response.status_code} while" \
                          "requesting access token. Check 'client_id' and" \
