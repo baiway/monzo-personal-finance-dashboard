@@ -5,6 +5,7 @@ Currently a work in progress!
 - **18th June 2024:** Got basic Monzo API calls working from within Python (including retrieving transactions!)
 - **19th June 2024:** Reviewing changes together and ensuring we've on the same page.
 - **26th June 2024:** Implementing basic redirect page using Flask web server.
+- **10th July 2024:** Walked Jack through using Git and GitHub and briefly explained refactored source code structure (i.e. `src/` folder, `utils/` folder, etc.)
 
 ## Getting started
 ### Requirements
@@ -39,7 +40,7 @@ If you're not familiar with Python virtual environments, watch [this video](http
 
 **4. Activate the virtual environment.**
 
-On macOS or Linux, enter
+The command varies by operating system. On macOS or Linux, enter
 ```
   source .venv/bin/activate
 ```
@@ -48,7 +49,7 @@ If using PowerShell on Windows, enter
   .venv\Scripts\Activate.ps1
 ```
 
-5. Optional: if using features on a particular branch, checkout that branch:
+**5. Optional:** if using features on a particular branch, checkout that branch:
 ```
   git checkout <branch_name>
 ```
@@ -58,7 +59,7 @@ If using PowerShell on Windows, enter
   pip install -r requirements.txt
 ```
 
-7. Copy & paste your **Client ID** and **Client Secret** into your `credentials.json` file.
+7. **Copy & paste your *Client ID* and *Client Secret* into your `credentials.json` file.**
 
 ## Running the app
 You can run the app with
@@ -78,3 +79,4 @@ When the app runs successfully, a browser window will open and ask for the email
 - Delete unnecessary fields from each transaction. For now, I think we only need `"amount"` and `"category"`. This will make querying `transactions.json` much faster (write about this in your write-up!)
 - Write some dummy HTML and CSS to display a webpage with various blank panels on it (e.g. one for spending by category, one for budgeted vs. actual spending, etc.)
 - Attempt to populate these panels with transaction data. Do you want this to be interactive? (e.g. we select a start and end date and see a summary of transactions in between)
+- Write some unit tests. See `tests/README.md` to get started.
