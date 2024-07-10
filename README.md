@@ -63,7 +63,7 @@ If using PowerShell on Windows, enter
 ## Running the app
 You can run the app with
 ```
-python3 get_transactions.py
+python3 launch_dashboard.py
 ```
 
 When the app runs successfully, a browser window will open and ask for the email address associated with your Monzo account. Enter your email address. You'll then receive an email with a 'magic link' that you use to authenticate the app. Click on this link. This will redirect you to `http://localhost:8080/callback`, which is the URL our Flask webserver is running on. The webserver will capture the authentication code, then use it to authenticate the client with Monzo. The app is now able to communicate with Monzo's servers.
