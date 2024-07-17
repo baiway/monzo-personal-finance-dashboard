@@ -43,9 +43,14 @@ def get_all_transactions(access_token, verbose=False):
                   "limit": block_size}
         response = requests.get("https://api.monzo.com/transactions", 
                             headers=header, params=params)
-        tlist = response.json()["transactions"]
-        block_size = len(tlist)
-        transactions.append(tlist)
+        tlist = response.json()["transactions"][0]
+
+        # Clean transactions (only keep quantities of interest)
+        qois = ["amount", "created", "categories", "description", "id"]
+        cleaned_transactions = [{key: t[key] for key in qois} for t in tlist]
+
+        block_size = len(cleaned_transactions)
+        transactions.append(cleaned_transactions)
 
         first = tlist[0]["created"]
         last = tlist[-1]["created"]
