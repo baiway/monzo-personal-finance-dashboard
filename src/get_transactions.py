@@ -48,9 +48,11 @@ def get_all_transactions(access_token, verbose=False):
         # Clean transactions (only keep quantities of interest)
         qois = ["amount", "created", "categories", "description", "id"]
         cleaned_transactions = [{key: t[key] for key in qois} for t in tlist]
+        print("this is a test")
+        print(f"{cleaned_transactions = }")
 
         block_size = len(cleaned_transactions)
-        transactions.append(cleaned_transactions)
+        transactions.extend(cleaned_transactions)
 
         first = tlist[0]["created"]
         last = tlist[-1]["created"]
