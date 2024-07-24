@@ -3,48 +3,88 @@ import json
 from datetime import datetime, timedelta
 
 
-def fetch_all_transactions(access_token, verbose=False):
-    """Retrieves all transactions since the account was created. 
-    Saves results in a JSON file: 'transactions.json'.
+def fetch_transactions(access_token, since=None, verbose=False):
+    """
+    Retrieves transactions on the account since the date `since`. If 
+    `since` is not provided, all transactions since account creation
+    will be fetched. Results are saved to `transactions.json`.
 
-    Multiple calls must be made because Monzo's API allows the maximum 
-    time between the 'since' and 'before' parametrs to be 8760 hours 
-    (365 days) [1]. Additionally, the maximum number of transactions we 
-    can receive in a single API call is 100 [2]. It's quite likely that 
-    a user will have more than 100 transactions per year though, so the 
-    time window will probably be the limiting factor.
-    
+    Multiple API calls are made to comply with Monzo's API limitations 
+    on time intervals and the maximum number of transactions per call.
+    See Notes below for details.
+
+    Parameters
+    ----------
+    access_token : str
+        The access token used to authenticate with the Monzo API.
+    since : datetime, optional
+        The function will retrieve all transactions from this date.
+        If not set, all transactions since account creation will
+        be retrieved.
+    verbose : bool, optional
+        If True, prints progress information while API calls are
+        being made (default is False).
+
+    Returns
+    -------
+    transactions : list
+        A list of transactions, each in a JSON-like format.
+
+    Raises
+    ------
+    ValueError
+        If there are two or more accounts associated with the provided 
+        login (this will only occur if e.g. you have a personal and
+        business account associated with your Monzo login).
+
+    Notes
+    -----
+    The Monzo API allows a maximum time interval of 8760 hours 
+    (365 days) between the 'since' and 'before' parameters [2]. 
+    Additionally, the maximum number of transactions that can be 
+    received in a single API call is 100 [3]. Therefore, the function 
+    splits the time range into multiple intervals if necessary and 
+    retrieves transactions in blocks of 100 until all transactions 
+    are fetched.
+
     References
-    [1] https://docs.monzo.com/#list-transactions
-    [2] https://docs.monzo.com/#pagination"""
-    
+    ----------
+    [1] https://docs.python.org/3/library/datetime.html#format-codes
+    [2] https://docs.monzo.com/#list-transactions
+    [3] https://docs.monzo.com/#pagination
+    """    
     # Get account ID and creation date
     header = {"Authorization": f"Bearer {access_token}"}
     response = requests.get("https://api.monzo.com/accounts", headers=header)
     if len(response.json()["accounts"]) > 2:
-        raise ValueError("Not yet implemented: two or more accounts associated" \
-                         "with this login.")
+        raise ValueError(
+            "Not yet implemented: two or more accounts associated" "with this login."
+        )
     account_id = response.json()["accounts"][0]["id"]
     created = response.json()["accounts"][0]["created"]
 
-    # Set start and end date of first time period
-    start = datetime.strptime(created, "%Y-%m-%dT%H:%M:%S.%fZ")
+    # Set start and end date of first API call.
+    if since is not None:
+        start = since
+    else:
+        start = datetime.strptime(created, "%Y-%m-%dT%H:%M:%S.%fZ")
+    
     end = start + timedelta(hours=8760)  # max time interval allowed by Monzo's API
 
     transactions = []
-    print("Attempting to fetch all previous transactions...")
+    print(f"Attempting to fetch transactions since {start.strftime('%d %b %Y')}")
 
     # Keep requesting transactions in blocks of 100 (the maximum) until we receive
     # a block with a size less than 100 (at which point we've got them all)
-    block_size = 100    
+    block_size = 100
     while block_size == 100:
         params = {"account_id": account_id,
                   "since": start.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
                   "before": end.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
                   "limit": block_size}
         response = requests.get("https://api.monzo.com/transactions", 
-                            headers=header, params=params)
-        tlist = response.json()["transactions"] # list of JSON-like transaction objects
+                                headers=header, params=params)
+        tlist = response.json()["transactions"]  # list of JSON-like transaction objects
 
         # Clean transactions (only keep quantities of interest)
         qois = ["amount", "created", "categories", "description", "id"]
@@ -66,15 +106,70 @@ def fetch_all_transactions(access_token, verbose=False):
         # Verbose output to show progress (rough 1 API call per second)
         # Example output line: `24 Jun 2024 to 23 Jul 2024:  83 entries.`
         if verbose:
-            print(f"{first.strftime('%d %b %Y')} to {last.strftime('%d %b %Y')}:  " \
+            print(f"{first.strftime('%d %b %Y')} to {last.strftime('%d %b %Y')}:  "
                   f"{block_size} entries.")
 
         # Set start of next block to the end of this block and end to 1 year later
         start = last + timedelta(seconds=1)
         end = start + timedelta(hours=8760)
 
-    # Save the final `transactions` list
-    with open("transactions.json", "w") as file:
-        json.dump({"transactions": transactions}, file, indent=2)
+    return transactions
 
-    print("Saved transaction data to: transactions.json.")
+
+def last_transaction():
+    """
+    Returns
+    -------
+    datetime
+        The date of the last transaction in transactions.json.
+    """
+    with open("transactions.json", "r") as file:
+        last = json.load(file)["transactions"][-1]["created"]
+
+    return datetime.strptime(last, "%Y-%m-%dT%H:%M:%S.%fZ")
+    
+
+def update_wanted():
+    """
+    Returns
+    -------
+    bool
+        Whether the user wants to fetch more recent transactions
+        from Monzo's servers  
+    """
+    while True:
+        update = input("Fetch more recent transactions?: (y/n)" ).lower().strip()
+        if update in ["y", "n"]:
+            return update == "y"
+
+
+def refresh(access_token, last_transaction, verbose=False):
+    """
+    Retrieves transactions on the account since `last_transaction`. For
+    details, see `fetch_transactions` function.
+
+    Parameters
+    ----------
+    access_token : str
+        The access token used to authenticate with the Monzo API.
+    last_transaction : datetime
+        The function will retrieve all transactions from this date.
+        If not set, all transactions since account creation will
+        be retrieved.
+    verbose : bool, optional
+        If True, prints progress information while API calls are
+        being made (default is False).
+
+    Returns
+    -------
+    transactions : list
+        A list of transactions, each in a JSON-like format.
+        
+    """
+    with open("transactions.json", "r") as file:
+        transactions = json.load(file)["transactions"]
+    new_trans = fetch_transactions(access_token, last_transaction, verbose=verbose)
+
+    transactions.extend(new_trans)
+
+    return transactions

@@ -3,6 +3,7 @@ import webbrowser
 import threading
 from flask import Flask, request, redirect
 from src.utils import gen_rand_str
+from src.config import load_credentials
 
 app = Flask(__name__)
 auth_code = None
@@ -24,7 +25,7 @@ def callback():
     return redirect("/")
 
 
-def authenticate(client_id, client_secret):
+def authenticate():
     """Authenticate with the Monzo API and acquire an access token.
 
     This function performs the OAuth2 authorization flow:
@@ -40,6 +41,9 @@ def authenticate(client_id, client_secret):
 
     Returns:
         str: Access token for authenticating with the Monzo API."""
+
+    client_id, client_secret = load_credentials()
+    
     global auth_code
     auth_code = None
     
@@ -85,8 +89,17 @@ def authenticate(client_id, client_secret):
 
     if response.ok:
         access_token = response.json()["access_token"]
-        return access_token
     else:
         raise ValueError(f"Encountered HTTP error {response.status_code} while" \
                          "requesting access token. Check 'client_id' and" \
                          "'client_secret' in credentials.json.")
+
+    # Before returning the access token, we need to get the user to authenticate
+    # using the Monzo app on their phone. Our app will pause here and await
+    # user confirmation
+    print("Please now authenticate using the Monzo app on your phone.")
+    app_auth = ""
+    while app_auth != "y":
+        app_auth = input("Have you authenticated using the app? (y/n) ").lower().strip()
+
+    return access_token
