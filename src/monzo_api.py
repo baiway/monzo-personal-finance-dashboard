@@ -1,5 +1,5 @@
 import requests
-import json
+import pandas as pd
 from datetime import datetime, timedelta
 
 
@@ -27,8 +27,8 @@ def fetch_transactions(access_token, since=None, verbose=False):
 
     Returns
     -------
-    transactions : list
-        A list of transactions, each in a JSON-like format.
+    pd.DataFrame
+        A Pandas DataFrame containing transaction data.
 
     Raises
     ------
@@ -78,22 +78,46 @@ def fetch_transactions(access_token, since=None, verbose=False):
     # a block with a size less than 100 (at which point we've got them all)
     block_size = 100
     while block_size == 100:
-        params = {"account_id": account_id,
-                  "since": start.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-                  "before": end.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-                  "limit": block_size}
-        response = requests.get("https://api.monzo.com/transactions", 
-                                headers=header, params=params)
+        params = {
+            "account_id": account_id,
+            "since": start.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            "before": end.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            "limit": block_size,
+            "expand[]": "merchant"  # expand for more merchant info
+        }
+        response = requests.get(
+            "https://api.monzo.com/transactions",
+            headers=header, 
+            params=params
+        )
         tlist = response.json()["transactions"]  # list of JSON-like transaction objects
 
-        # Clean transactions (only keep quantities of interest)
-        qois = ["amount", "created", "categories", "description", "id"]
-        cleaned_transactions = [{key: t[key] for key in qois} for t in tlist]
+        # Clean transaction data (only keep quantities of interest)
+        cleaned_transactions = []
+        for t in tlist:
+            # skip active card checks
+            if t["amount"] == 0:
+                continue
+
+            m = t.get("merchant")    # doesn't always exist (e.g. incoming payment)
+            meta = m.get("metadata") if m else None      # ditto
+            cleaned_t = {
+                "created": t.get("created"),
+                "amount": t.get("amount"),
+                "description": t.get("description"),
+                "merchant_name": m.get("name") if m else None,
+                "category": m.get("category") if m else None,
+                "tags": m.get("suggested_tags") if m else None,
+                "address": m.get("address").get("formatted") if m else None,
+                "website": meta.get("website") if meta else None
+            }
+
+            cleaned_transactions.append(cleaned_t)
 
         # Add cleaned block to full `transactions` list, then determine the size of
         # the block to check if we need to keep going
         transactions.extend(cleaned_transactions)
-        block_size = len(cleaned_transactions)
+        block_size = len(tlist)
 
         # Determine date of first and last transaction in the block
         first = tlist[0]["created"]
@@ -113,7 +137,8 @@ def fetch_transactions(access_token, since=None, verbose=False):
         start = last + timedelta(seconds=1)
         end = start + timedelta(hours=8760)
 
-    return transactions
+    # Convert the transactions list to a DataFrame
+    return pd.DataFrame(transactions)
 
 
 def last_transaction():
@@ -123,8 +148,8 @@ def last_transaction():
     datetime
         The date of the last transaction in transactions.json.
     """
-    with open("transactions.json", "r") as file:
-        last = json.load(file)["transactions"][-1]["created"]
+    df = pd.read_csv("transactions.csv")
+    last = df["created"].iloc[-1]
 
     return datetime.strptime(last, "%Y-%m-%dT%H:%M:%S.%fZ")
     
@@ -138,7 +163,7 @@ def update_wanted():
         from Monzo's servers  
     """
     while True:
-        update = input("Fetch more recent transactions?: (y/n)" ).lower().strip()
+        update = input("Fetch more recent transactions?: (y/n) ").lower().strip()
         if update in ["y", "n"]:
             return update == "y"
 
@@ -162,14 +187,10 @@ def refresh(access_token, last_transaction, verbose=False):
 
     Returns
     -------
-    transactions : list
-        A list of transactions, each in a JSON-like format.
-        
+    pd.DataFrame
+        A Pandas DataFrame containing transaction data.
     """
-    with open("transactions.json", "r") as file:
-        transactions = json.load(file)["transactions"]
-    new_trans = fetch_transactions(access_token, last_transaction, verbose=verbose)
+    df = pd.read_csv("transactions.csv")
+    new_df = fetch_transactions(access_token, last_transaction, verbose=verbose)
 
-    transactions.extend(new_trans)
-
-    return transactions
+    return pd.concat([df, new_df])
