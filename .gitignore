@@ -2,3 +2,4 @@
 credentials.json
 transactions.csv
 src/__pycache__
+src/components/__pycache__
