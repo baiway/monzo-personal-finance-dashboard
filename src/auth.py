@@ -5,20 +5,20 @@ from flask import Flask, request, redirect
 from src.utils import gen_rand_str
 from src.config import load_credentials
 
-app = Flask(__name__)
+auth_app = Flask(__name__)
 auth_code = None
 
 
 def run_flask():
-    app.run(port=8080)
+    auth_app.run(port=8080)
 
 
-@app.route("/")
+@auth_app.route("/")
 def index():
     return "Authentication successful. You can close this window."
 
 
-@app.route("/callback")
+@auth_app.route("/callback")
 def callback():
     global auth_code
     auth_code = request.args.get("code")
