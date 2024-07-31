@@ -1,5 +1,8 @@
 import json
-from dash import Input, Output, State, html
+from pathlib import Path
+from dash import Input, Output, State, html, dcc
+
+from src.data import load_transactions_data
 from src.layout import create_credentials_layout, create_dashboard_layout
 from src.components import generate_category_spending_chart
 
@@ -14,12 +17,26 @@ def register_callbacks(app):
     )
     def display_page(pathname):
         """
-        Display the appropriate page based on the pathname.
+        Display the appropriate page based on the pathname. 
+        
+        This may seem unnecessarily convoluted, but it's to protect 
+        against users manually entering the incorrect URL. For example, 
+        if a user enters `http://127.0.0.1:8050/dashboard` but doesn't 
+        have a `credentials.json` file, they'll run into issues if they 
+        try to refresh their `transactions.csv` file. To protect 
+        against this, we redirect them to 
+        `http://127.0.0.1:8050/credentials`.
         """
-        if pathname == "/credentials":
-            return create_credentials_layout()
+        print(f"{pathname = }")
+        if pathname in ["/", "/credentials"]:
+            if not Path("credentials.json").exists():
+                return create_credentials_layout()
+            return dcc.Location(pathname="/dashboard", id="redirect-to-dashboard")
         elif pathname == "/dashboard":
-            return create_dashboard_layout(app)
+            if Path("credentials.json").exists():
+                load_transactions_data()
+                return create_dashboard_layout(app)
+            return create_credentials_layout()
         return html.Div("404 - Page not found.")
 
 
