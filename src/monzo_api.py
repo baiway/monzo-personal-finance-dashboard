@@ -139,19 +139,6 @@ def fetch_transactions(access_token, since=None, verbose=False):
 
     # Convert the transactions list to a DataFrame
     return pd.DataFrame(transactions)
-
-
-def last_transaction():
-    """
-    Returns
-    -------
-    datetime
-        The date of the last transaction in transactions.json.
-    """
-    df = pd.read_csv("transactions.csv")
-    last = df["created"].iloc[-1]
-
-    return datetime.strptime(last, "%Y-%m-%dT%H:%M:%S.%fZ")
     
 
 def update_wanted():

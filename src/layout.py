@@ -1,6 +1,6 @@
 from dash import html, dcc
 
-def landing_page():
+def create_credentials_layout():
     return html.Div([
         html.H2("Enter your Monzo API Credentials"),
         dcc.Input(
@@ -24,7 +24,22 @@ def landing_page():
             id="credentials-output"
         )
     ])
-
-
-def create_layout(app):
-    return html.Div(id="page-content")
+    
+def create_dashboard_layout(app):
+    return html.Div([
+        html.H1("Monzo Dashboard"),
+        dcc.DatePickerRange(
+            id='date-picker-range',
+            start_date_placeholder_text="Start Date",
+            end_date_placeholder_text="End Date",
+            display_format='YYYY-MM-DD'
+        ),
+        html.Button(
+            'Update', 
+            id='update-button',
+            n_clicks=0
+        ),
+        dcc.Graph(
+            id='category-spending-bar-chart'
+        )
+    ])
