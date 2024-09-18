@@ -147,9 +147,21 @@ def create_app() -> FastHTML:
             "Dashboard",
             Div(
                 P("Welcome to your dashboard!"),
-                P(update_message)
+                P(update_message),
+                P("Would you like to update the transactions?"),
+                Button("Update", hx_post="/update-transactions", hx_trigger="click")
             )
         )
+
+    # Route that handles the updating of the transactions database
+    #
+    # TODO implement
+    @rt("/update-transactions")
+    def fetch_transactions():
+        """Function to fetch and update the transactions database."""
+        print("----> Transactions update requested")
+        # Return a 204 No Content response to indicate that no content needs to be updated
+        return Response(status_code=204)
 
     # This handler displays a form allowing the user to enter their `client_id`
     # and `client_secret`.
