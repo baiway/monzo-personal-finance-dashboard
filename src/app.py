@@ -136,7 +136,7 @@ def create_app() -> FastHTML:
         if db_path.exists():
             last_modified = db_path.stat().st_mtime
             tstr = datetime.fromtimestamp(last_modified).strftime(
-                "%H:%M on %d-%m-%Y"
+                "%H:%M on %d %b %Y"
             )
 
             update_message = f"Transactions last updated at {tstr}."
