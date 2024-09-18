@@ -1,5 +1,4 @@
 .venv
-credentials.json
-transactions.csv
+.sesskey
+data
 src/__pycache__
-src/components/__pycache__

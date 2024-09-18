@@ -1,9 +1,11 @@
 import webbrowser
-
-from src.app import initialise_app, app
+import threading
+from src.app import run_app
 
 if __name__ == "__main__":
-    # Initialise the app and open the web browser
-    initialise_app()
-    webbrowser.open("http://127.0.0.1:8050/")
-    app.run_server(debug=False, port=8050)
+    # Start the FastHTML app in a separate thread
+    server_thread = threading.Thread(target=run_app)
+    server_thread.start()
+
+    # Open app in default browser
+    webbrowser.open("http://localhost:5001/")
