@@ -234,9 +234,6 @@ def create_app() -> FastHTML:
         client_id = sess["client_id"]
         client_secret = sess["client_secret"]
 
-        print(f"oauth_state = {oauth_state}")
-        print(f"state = {state}")
-
         # Verify the state token
         if state != oauth_state:
             return Titled(
