@@ -4,7 +4,17 @@
 import requests
 import uvicorn
 from fasthtml.common import *
+from datetime import datetime
 from src.utils import gen_rand_str
+
+# URL Constants
+BASE_AUTH_URL = "https://auth.monzo.com/"
+TOKEN_URL = "https://api.monzo.com/oauth2/token"
+REDIRECT_URI = "http://localhost:5001/auth/callback"
+
+# In-memory storage for the OAuth state and auth code
+oauth_state = None
+auth_code = None
 
 def run_app() -> None:
     uvicorn.run(create_app, host="localhost", port=5001, reload=False, factory=True)
@@ -26,19 +36,10 @@ def create_app() -> FastHTML:
           exchanging the auth code for an access token.
         - `/dashboard`: Displays a simple dashboard to authenticated
           users.
-        - `/`: the main entry point, which acts as a simple test page.
 
     Returns:
         app: A FastHTML application instance ready to be served.
     """
-    # URL Constants
-    BASE_AUTH_URL = "https://auth.monzo.com/"
-    TOKEN_URL = "https://api.monzo.com/oauth2/token"
-    REDIRECT_URI = "http://localhost:5001/auth/callback"
-
-    # In-memory storage for the OAuth state and auth code
-    oauth_state = None
-    auth_code = None
 
     # If `data/transactions.db` does not already exist, create it
     db = database("data/transactions.db")
@@ -96,7 +97,6 @@ def create_app() -> FastHTML:
         https://github.com/AnswerDotAI/fasthtml/blob/main/examples/adv_app.py
         """
         auth = req.scope["auth"] = sess.get("auth", None)
-        print(f"{auth = }")
         if not auth:
             return RedirectResponse("/auth", status_code=303)
 
@@ -105,7 +105,7 @@ def create_app() -> FastHTML:
     # stylesheets to be applied)
     bware = Beforeware(
         before,
-        skip=[r".*\.css", "/auth"] # list of regexes to skip
+        skip=[r".*\.css", "/auth", "/auth/callback.*"] # list of regexes to skip
     )
 
     # Used in `exception_handlers` dict
@@ -123,15 +123,32 @@ def create_app() -> FastHTML:
     #
     ###########################################################################
     #
-    # This is the handler for the main application.
-    # TODO print the time that `transactions.db` was last updated and ask
-    # the user whether they'd like to refresh. If so, redirect to `/auth`;
-    # if not, redirect to `/dashboard`.
+    # Handler for the root directory where the dashboard is displayed
+    #
+    # TODO implement the dashboard...
+    #
+    # TODO add button asking the user whether they'd like to update the
+    # transactions database
     @rt("/")
     def get():
+        # If `transactions.db` exists, check when it was last modified
+        db_path = Path("data/transactions.db")
+        if db_path.exists():
+            last_modified = db_path.stat().st_mtime
+            tstr = datetime.fromtimestamp(last_modified).strftime(
+                "%H:%M on %d-%m-%Y"
+            )
+
+            update_message = f"Transactions last updated at {tstr}."
+        else:
+            update_message = "`data/transactions.db` not found"
+
         return Titled(
-            "Welcome",
-            Div(P("A simple test app."))
+            "Dashboard",
+            Div(
+                P("Welcome to your dashboard!"),
+                P(update_message)
+            )
         )
 
     # This handler displays a form allowing the user to enter their `client_id`
@@ -177,7 +194,6 @@ def create_app() -> FastHTML:
         )
 
         # FIXME
-        # Redirect user to `auth_url`
         return RedirectResponse(auth_url, status_code=303)
 
     # This handler is called after the user receives the authentication email
@@ -206,6 +222,9 @@ def create_app() -> FastHTML:
         client_id = sess["client_id"]
         client_secret = sess["client_secret"]
 
+        print(f"oauth_state = {oauth_state}")
+        print(f"state = {state}")
+
         # Verify the state token
         if state != oauth_state:
             return Titled(
@@ -227,18 +246,18 @@ def create_app() -> FastHTML:
 
         if response.ok:
             sess["access_token"] = response.json()["access_token"]
+            sess["auth"] = True   # stops redirects from `before` function
             txt = (
                 "Monzo authentication successful! Please now authenticate via "
-                "the Monzo app on your mobile device. Press 'Proceed' when "
-                "you have done so."
+                "the Monzo app on your mobile device. Press the 'Proceed to "
+                "Dashboard' button when you have done so."
             )
             return Titled(
                 "Monzo Authentication",
                 Div(txt),
                 Button(
                    "Proceed to Dashboard",
-                   hx_get="/dashboard",
-                   hx_target="body"
+                   onclick="window.location.href='/'"
                )
             )
         else:
@@ -246,12 +265,5 @@ def create_app() -> FastHTML:
                 "Error",
                 Div(f"Failed to get access token: {response.status_code}")
             )
-
-
-    # This handler displays the dashboard (not yet implemented)
-    # FIXME
-    @rt("/dashboard")
-    def get():
-        return Titled("Dashboard", Div("Welcome to your dashboard!"))
 
     return app
