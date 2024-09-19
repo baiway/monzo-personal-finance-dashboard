@@ -5,7 +5,9 @@ import requests
 import uvicorn
 from fasthtml.common import *
 from datetime import datetime
-from src.utils import gen_rand_str
+from src.utils import gen_rand_str, get_update_date
+from src.monzo_api import fetch_transactions
+from src.dashboard_components import plot_spending_by_category
 
 # URL Constants
 BASE_AUTH_URL = "https://auth.monzo.com/"
@@ -17,7 +19,13 @@ oauth_state = None
 auth_code = None
 
 def run_app() -> None:
-    uvicorn.run(create_app, host="localhost", port=5001, reload=False, factory=True)
+    uvicorn.run(
+        create_app,
+        host="localhost",
+        port=5001,
+        reload=False,
+        factory=True
+    )
 
 
 def create_app() -> FastHTML:
@@ -81,6 +89,12 @@ def create_app() -> FastHTML:
         client_id: str
         client_secret: str
 
+    # Similarly, define start and end dates for the date-picker
+    @dataclass
+    class Dates:
+        start_date: str
+        end_date: str
+
     # The `before` function is a *Beforeware* function. These are functions
     # that run *before* a route handler is called.
     def before(req, sess):
@@ -101,11 +115,12 @@ def create_app() -> FastHTML:
             return RedirectResponse("/auth", status_code=303)
 
     # Create a Beforeware object that blocks the user from manually accessing
-    # all URLs except `/auth` until they've authenticated (but still allows
-    # stylesheets to be applied)
+    # all URLs except `/auth.*` until they've authenticated but still allows
+    # stylesheets to be applied. `skip` is a list of regexes of routes that
+    # are ignored here.
     bware = Beforeware(
         before,
-        skip=[r".*\.css", "/auth", "/auth/callback.*"] # list of regexes to skip
+        skip=[r".*\.css", "/auth.*"]
     )
 
     # Used in `exception_handlers` dict
@@ -116,52 +131,95 @@ def create_app() -> FastHTML:
     app, rt = fast_app(
         before=bware,
         exception_handlers={404: _not_found},
-        hdrs=(picolink)
+        hdrs=(
+            picolink,
+            Style("""
+                .indicator {
+                    display: none;
+                }
+                .htmx-request .indicator {
+                    display: inline-block;
+                }
+                button-content {
+                    display: inline-block;
+                }
+                .htmx-request .button-content {
+                    display: none;
+                }
+                .date-picker {
+                    width: auto;
+                }
+            """)
+        )
     )
 
     # Everything below this point is a route handler.
     #
     ###########################################################################
     #
-    # Handler for the root directory where the dashboard is displayed
-    #
     # TODO implement the dashboard...
     #
-    # TODO add button asking the user whether they'd like to update the
-    # transactions database
+    # FIXME currently have to refresh the page to change the date again
     @rt("/")
-    def get():
-        # If `transactions.db` exists, check when it was last modified
-        db_path = Path("data/transactions.db")
-        if db_path.exists():
-            last_modified = db_path.stat().st_mtime
-            tstr = datetime.fromtimestamp(last_modified).strftime(
-                "%H:%M on %d %b %Y"
-            )
-
-            update_message = f"Transactions last updated at {tstr}."
-        else:
-            update_message = "`data/transactions.db` not found"
+    def get(sess):
+        """Handler for the root directory where the dashboard is
+        displayed. No dashboard is rendered until a `start_date` and
+        `end_date` is selected via the date-picker.
+        """
+        last_updated = get_update_date()
+        update_message = f"Transactions last updated at {last_updated}."
 
         return Titled(
             "Dashboard",
             Div(
                 P("Welcome to your dashboard!"),
-                P(update_message),
+                P(update_message, id="update-date"),
                 P("Would you like to update the transactions?"),
-                Button("Update", hx_post="/update-transactions", hx_trigger="click")
+                Button(
+                    Span("Update transactions", _class="button-content"),
+                    Span("Loading...", aria_busy="true", _class="indicator"),
+                    hx_post="/update-transactions",
+                    hx_target="#update-date",
+                    hx_swap="innerHTML"
+                ),
+                Form(
+                    Input(id="start_date", type="date", _class="date-picker"),
+                    Input(id="end_date", type="date", _class="date-picker"),
+                    Button("Update plots"),
+                    hx_post="/update-plots",
+                    hx_target="#dashboard-components",
+                    hx_swap="innerHTML"
+                ),
+                Div(id="dashboard-components") # initially empty
             )
         )
 
-    # Route that handles the updating of the transactions database
-    #
-    # TODO implement
     @rt("/update-transactions")
-    def fetch_transactions():
-        """Function to fetch and update the transactions database."""
-        print("----> Transactions update requested")
-        # Return a 204 No Content response to indicate that no content needs to be updated
-        return Response(status_code=204)
+    def post(sess):
+        """Fetches transactions via Monzo's API and updates
+        `data/transactions.db`. Returns the date and time of the update
+        so that it can be displayed on the page.
+        """
+        access_token = sess["access_token"]
+        fetch_transactions(access_token, verbose=True)
+        last_updated = get_update_date()
+        update_message = f"Transactions last updated at {last_updated}."
+        return update_message
+
+    @rt("/update-plots")
+    def post(dates: Dates, sess):
+        """Updates dashboard plots to show data defined between the
+        `start_date` and `end_date` defined using the date picker.
+        """
+        start_date = dates.start_date
+        end_date = dates.end_date
+        print(f"{start_date}")
+        print(f"{end_date}")
+        # TODO can return a tuple of Html elements
+        return (
+            plot_spending_by_category(start_date, end_date)
+        )
+
 
     # This handler displays a form allowing the user to enter their `client_id`
     # and `client_secret`.
