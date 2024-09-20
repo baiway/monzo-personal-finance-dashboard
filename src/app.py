@@ -5,7 +5,7 @@ import requests
 import uvicorn
 from fasthtml.common import *
 from datetime import datetime
-from src.utils import gen_rand_str, get_update_date
+from src.utils import gen_rand_str, get_update_date, has_entries
 from src.monzo_api import fetch_transactions
 from src.dashboard_components import plot_spending_by_category
 
@@ -52,16 +52,8 @@ def create_app() -> FastHTML:
     # If `data/transactions.db` does not already exist, create it
     db = database("data/transactions.db")
     transactions = db.t.transactions
-    users = db.t.users
 
     if transactions not in db.t:
-        users.create(
-            dict(
-                client_id=str,
-                client_secret=str
-            ),
-            pk="client_id"
-        )
         transactions.create(
             dict(
                 created=str,
@@ -79,7 +71,6 @@ def create_app() -> FastHTML:
     # The `.dataclass()` method creates a dataclass that defines the type
     # of database entries
     Transaction = transactions.dataclass()
-    User = users.dataclass()
 
     # Similarly, define a `Credentials` dataclass to pass to the `/auth`
     # handler. This gets automatically instantiated when the user enters
@@ -166,8 +157,11 @@ def create_app() -> FastHTML:
         displayed. No dashboard is rendered until a `start_date` and
         `end_date` is selected via the date-picker.
         """
-        last_updated = get_update_date()
-        update_message = f"Transactions last updated at {last_updated}."
+        if has_entries():
+            last_updated = get_update_date()
+            update_message = f"Transactions last updated at {last_updated}."
+        else:
+            update_message = "Transactions database is empty."
 
         return Titled(
             "Dashboard",
@@ -211,11 +205,9 @@ def create_app() -> FastHTML:
         """Updates dashboard plots to show data defined between the
         `start_date` and `end_date` defined using the date picker.
         """
-        start_date = dates.start_date
-        end_date = dates.end_date
-        print(f"{start_date}")
-        print(f"{end_date}")
-        # TODO can return a tuple of Html elements
+        start_date = datetime.strptime(dates.start_date, "%Y-%m-%d")
+        end_date = datetime.strptime(dates.end_date, "%Y-%m-%d")
+        # Return a tuple of HTML elements (likely all `Img` objects)
         return (
             plot_spending_by_category(start_date, end_date)
         )

@@ -2,31 +2,53 @@ import io
 import base64
 import random
 import string
+import sqlite3
 import matplotlib
 import matplotlib.pyplot as plt
 from fasthtml.common import Img
 from pathlib import Path
 from datetime import datetime
 
-# This is necessary to prevent matplotlib from causing memory leaks
-# https://stackoverflow.com/questions/31156578/matplotlib-doesnt-release-memory-after-savefig-and-close
-matplotlib.use('Agg')
-
-def gen_rand_str(length=16):
-    """Generates a random string of letters and numbers to create an
-    unguessable state token for use in authentication. This protects
-    against cross-site request forgery attacks.
+def gen_rand_str(L=16):
+    """Generates a random string of letters and numbers of length `L`
+    to create an unguessable state token for use in authentication.
+    This protects against cross-site request forgery attacks.
     See: https://docs.monzo.com/#acquire-an-access-token"""
-    return "".join(random.choices(string.ascii_letters + string.digits, k=length))
+    return "".join(random.choices(string.ascii_letters + string.digits, k=L))
 
 def get_update_date():
-    """Get the date and time of that `data/transactions.db` was last
-    modified. Example outout: "20:30 on 19 Sep 2024".
+    """Get the date and time that `data/transactions.db` or
+    `data/transactions.db-wal` was last modified, whichever is more
+    recent. The `.db-wal` file is a "write-ahead log" file. It stores
+    changes made to the database (e.g by this script) before they are
+    committed to the main `.db` file. Example output: "20:30 on 19 Sep
+    2024".
     """
-    last_modified = Path("data/transactions.db").stat().st_mtime
+    db_path = Path("data/transactions.db")
+    wal_path = Path("data/transactions.db-wal")
+
+    # Get modification times for both files
+    db_mtime = db_path.stat().st_mtime
+    wal_mtime = wal_path.stat().st_mtime if wal_path.exists() else 0
+
+    # Determine the most recent modification time
+    last_modified = max(db_mtime, wal_mtime)
+
     return datetime.fromtimestamp(last_modified).strftime(
         "%H:%M on %d %b %Y"
     )
+
+def has_entries() -> bool:
+    """Checks if the `transactions` table in `data/transactions.db` has
+    any entries.
+    """
+    db_path = "data/transactions.db"
+    conn = sqlite3.connect(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM transactions")
+        result = cursor.fetchone()
+    return result[0] > 0 # if number of rows > 0
 
 
 def matplotlib2fasthtml(func):
@@ -44,6 +66,7 @@ def matplotlib2fasthtml(func):
     ```
     Code from: https://github.com/koaning/fh-matplotlib/
     """
+    matplotlib.use('Agg')
     def wrapper(*args, **kwargs):
         fig = plt.figure()
 
