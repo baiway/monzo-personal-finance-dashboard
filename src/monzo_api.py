@@ -8,7 +8,7 @@ def get_account_details(access_token: str) -> tuple[str, str]:
     """
     header = {"Authorization": f"Bearer {access_token}"}
     response = requests.get("https://api.monzo.com/accounts", headers=header)
-    if len(response.json()["accounts"]) > 2:
+    if len(response.json()["accounts"]) > 1:
         raise ValueError(
             "Not yet implemented: two or more accounts "
             "associated with this email address."
