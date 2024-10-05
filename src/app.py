@@ -4,7 +4,7 @@
 import requests
 import uvicorn
 from fasthtml.common import *
-from datetime import datetime
+from datetime import datetime, timedelta
 from src.utils import gen_rand_str, get_update_date, has_entries
 from src.monzo_api import fetch_transactions
 from src.dashboard_components import plot_spending_by_category
@@ -102,7 +102,10 @@ def create_app() -> FastHTML:
         https://github.com/AnswerDotAI/fasthtml/blob/main/examples/adv_app.py
         """
         auth = req.scope["auth"] = sess.get("auth", None)
-        if not auth:
+        timestamp = req.scope["auth_timestamp"] = sess.get("auth_timestamp", None)
+        if timestamp is not None:
+            expired = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S") >= timedelta(minutes=5)
+        if not auth or expired:
             return RedirectResponse("/auth", status_code=303)
 
     # Create a Beforeware object that blocks the user from manually accessing
@@ -306,6 +309,7 @@ def create_app() -> FastHTML:
         if response.ok:
             sess["access_token"] = response.json()["access_token"]
             sess["auth"] = True   # stops redirects from `before` function
+            sess["auth_timestamp"] = strptime(datetime.now(), "%Y-%m-%dT%H:%M:%S")
             txt = (
                 "Monzo authentication successful! Please now authenticate via "
                 "the Monzo app on your mobile device. Press the 'Proceed to "
