@@ -7,7 +7,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from fasthtml.common import Img
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def gen_rand_str(L=16):
     """Generates a random string of letters and numbers of length `L`
@@ -37,6 +37,23 @@ def get_update_date():
     return datetime.fromtimestamp(last_modified).strftime(
         "%H:%M on %d %b %Y"
     )
+
+def access_token_refresh_needed(timestamp: str) -> bool:
+    """Determines whether the `access_key` stored in `.sesskey` needs
+    to be refreshed by checking its creation date. If it's older than
+    3 minutes, force the user to re-authenticate.
+
+    Technically, an `access_token` can be used to fetch all
+    transactions for *5 minutes* after it's creation, but here we check
+    for 3 minutes as it could take ~60 seconds to fetch all the
+    transactions from an old account, so the `access_token` would
+    expire while transactions were being fetched, resulting in a
+    crash.
+    """
+    if timestamp is not None:
+        age = datetime.now() - datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S")
+        expired = age >= timedelta(minutes=3)
+    return expired
 
 def has_entries() -> bool:
     """Checks if the `transactions` table in `data/transactions.db` has

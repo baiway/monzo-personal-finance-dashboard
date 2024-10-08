@@ -4,21 +4,43 @@
 import requests
 import uvicorn
 from fasthtml.common import *
-from datetime import datetime, timedelta
-from src.utils import gen_rand_str, get_update_date, has_entries
+from datetime import datetime
+from src.utils import (
+    gen_rand_str,
+    get_update_date,
+    has_entries,
+    access_token_refresh_needed
+)
 from src.monzo_api import fetch_transactions
 from src.dashboard_components import plot_spending_by_category
 
-# URL Constants
+# URLs used in OAuth2 flow. See `/auth` and `/auth/callback` routes
 BASE_AUTH_URL = "https://auth.monzo.com/"
 TOKEN_URL = "https://api.monzo.com/oauth2/token"
 REDIRECT_URI = "http://localhost:5001/auth/callback"
 
-# In-memory storage for the OAuth state and auth code
+# `oauth_state` is set in the `/auth` POST route to a 16-character random
+# string to prevent against CSRF attacks. This is required by Monzo.
+# See: https://docs.monzo.com/#acquire-an-access-token
+#
+# `auth_code` is extracted from the callback URL after two-factor
+# authentication with Monzo via email.
 oauth_state = None
 auth_code = None
 
 def run_app() -> None:
+    """Starts the FastHTML application server.
+
+    This function launches the FastHTML app by invoking Uvicorn, a
+    lightweight ASGI server for Python. The app listens on localhost at
+    port 5001.
+
+    The FastHTML app includes routes for:
+      - `/auth`: Handles OAuth2 authentication with Monzo.
+      - `/auth/callback`: Receives and processes the callback after
+        authentication.
+      - `/dashboard`: Displays a dashboard for authenticated users.
+    """
     uvicorn.run(
         create_app,
         host="localhost",
@@ -102,10 +124,7 @@ def create_app() -> FastHTML:
         https://github.com/AnswerDotAI/fasthtml/blob/main/examples/adv_app.py
         """
         auth = req.scope["auth"] = sess.get("auth", None)
-        timestamp = req.scope["auth_timestamp"] = sess.get("auth_timestamp", None)
-        if timestamp is not None:
-            expired = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S") >= timedelta(minutes=5)
-        if not auth or expired:
+        if not auth:
             return RedirectResponse("/auth", status_code=303)
 
     # Create a Beforeware object that blocks the user from manually accessing
@@ -147,13 +166,6 @@ def create_app() -> FastHTML:
         )
     )
 
-    # Everything below this point is a route handler.
-    #
-    ###########################################################################
-    #
-    # TODO implement the dashboard...
-    #
-    # FIXME currently have to refresh the page to change the date again
     @rt("/")
     def get(sess):
         """Handler for the root directory where the dashboard is
@@ -198,6 +210,12 @@ def create_app() -> FastHTML:
         so that it can be displayed on the page.
         """
         access_token = sess["access_token"]
+        timestamp = sess["auth_timestamp"]
+        if access_token_refresh_needed(timestamp):
+            return Response("/auth",
+                headers={"HX-Redirect": "/auth"},
+                status_code=303
+            )
         fetch_transactions(access_token, verbose=True)
         last_updated = get_update_date()
         update_message = f"Transactions last updated at {last_updated}."
@@ -215,11 +233,12 @@ def create_app() -> FastHTML:
             plot_spending_by_category(start_date, end_date)
         )
 
-
     # This handler displays a form allowing the user to enter their `client_id`
     # and `client_secret`.
     # TODO add instructions explaining how to get `client_id` and
     # `client_secret` from https://developers.monzo.com/ (see `README.md`).
+    # It would be really nice to include a short screen recording explaining
+    # this.
     @rt("/auth")
     def get():
         """Creates a form with two input fields and a submit button."""
@@ -258,7 +277,6 @@ def create_app() -> FastHTML:
             f"&state={oauth_state}"
         )
 
-        # FIXME
         return RedirectResponse(auth_url, status_code=303)
 
     # This handler is called after the user receives the authentication email
@@ -267,9 +285,6 @@ def create_app() -> FastHTML:
     # This handler extracts the authentication code from this URL, then
     # exchanges it with Monzo's servers to get an access token, which is needed
     # to make API requests.
-    #
-    # TODO can we make the URL tidier here? It's a mess and looks extremely
-    # amateur
     #
     # TODO from a UX perspective, it would be very nice to include a screen
     # recording of a mobile device receiving the push notification from Monzo,
@@ -309,7 +324,7 @@ def create_app() -> FastHTML:
         if response.ok:
             sess["access_token"] = response.json()["access_token"]
             sess["auth"] = True   # stops redirects from `before` function
-            sess["auth_timestamp"] = strptime(datetime.now(), "%Y-%m-%dT%H:%M:%S")
+            sess["auth_timestamp"] = datetime.strftime(datetime.now(), "%Y-%m-%dT%H:%M:%S")
             txt = (
                 "Monzo authentication successful! Please now authenticate via "
                 "the Monzo app on your mobile device. Press the 'Proceed to "
