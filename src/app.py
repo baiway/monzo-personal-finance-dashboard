@@ -226,6 +226,8 @@ def create_app() -> FastHTML:
         """Updates dashboard plots to show data defined between the
         `start_date` and `end_date` defined using the date picker.
         """
+        if not dates.start_date or not dates.end_date:
+            return P("") # empty paragraph element; changes nothing
         start_date = datetime.strptime(dates.start_date, "%Y-%m-%d")
         end_date = datetime.strptime(dates.end_date, "%Y-%m-%d")
         # Return a tuple of HTML elements (likely all `Img` objects)
